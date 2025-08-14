@@ -12,6 +12,8 @@ interface CalendarProps {
 
 const Calendar: React.FC<CalendarProps> = ({ events, selectedDate, onDateSelect, onEventClick }) => {
   const [currentMonth, setCurrentMonth] = React.useState(new Date());
+  // Estado para controlar quais dias estão expandidos
+    const [expandedDays, setExpandedDays] = React.useState<{ [date: string]: boolean }>({});
 
   const monthNames = [
     'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -83,6 +85,10 @@ const Calendar: React.FC<CalendarProps> = ({ events, selectedDate, onDateSelect,
   const days = getDaysInMonth(currentMonth);
   const today = new Date().toISOString().split('T')[0];
 
+  // Verifica se está expandido globalmente
+  const allDays = days.map(d => d.dateString);
+  const allExpanded = allDays.every(date => expandedDays[date]);
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100">
       {/* Header do Calendário */}
@@ -101,7 +107,10 @@ const Calendar: React.FC<CalendarProps> = ({ events, selectedDate, onDateSelect,
             <ChevronLeft className="h-5 w-5 text-gray-600" />
           </button>
           <button
-            onClick={() => setCurrentMonth(new Date())}
+            onClick={() => {
+              setCurrentMonth(new Date());
+              onDateSelect(new Date().toISOString().split('T')[0]);
+            }}
             className="px-3 py-1 text-sm text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
           >
             Hoje
@@ -114,10 +123,8 @@ const Calendar: React.FC<CalendarProps> = ({ events, selectedDate, onDateSelect,
           </button>
         </div>
       </div>
-
-      {/* Grade do Calendário */}
-      <div className="p-6">
-        {/* Cabeçalho dos dias da semana */}
+      {/* Cabeçalho dos dias da semana */}
+      <div className="p-6 pb-0">
         <div className="grid grid-cols-7 gap-1 mb-4">
           {weekDays.map(day => (
             <div key={day} className="p-2 text-center text-sm font-medium text-gray-500">
@@ -125,13 +132,15 @@ const Calendar: React.FC<CalendarProps> = ({ events, selectedDate, onDateSelect,
             </div>
           ))}
         </div>
-
-        {/* Dias do mês */}
+      </div>
+      {/* Grade do Calendário (agenda) */}
+      <div className="p-6">
         <div className="grid grid-cols-7 gap-1">
           {days.map((day, index) => {
             const dayEvents = getEventsForDate(day.dateString);
             const isSelected = day.dateString === selectedDate;
             const isToday = day.dateString === today;
+            const isExpanded = false;
 
             return (
               <div
@@ -150,7 +159,6 @@ const Calendar: React.FC<CalendarProps> = ({ events, selectedDate, onDateSelect,
                 }`}>
                   {day.date.getDate()}
                 </div>
-                
                 <div className="space-y-1">
                   {dayEvents.slice(0, 3).map(event => {
                     const eventUser = users.find(u => u.id === event.userId);

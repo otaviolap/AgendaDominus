@@ -7,11 +7,9 @@ function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   useEffect(() => {
-    // Verificar se existe usuário logado no localStorage
-    const savedUser = localStorage.getItem('dominus-user');
-    if (savedUser) {
-      setCurrentUser(JSON.parse(savedUser));
-    }
+    // Sempre remover usuário salvo ao iniciar
+    localStorage.removeItem('dominus-user');
+    setCurrentUser(null);
   }, []);
 
   const handleLogin = (user: User) => {

@@ -8,7 +8,8 @@ import {
   query, 
   where, 
   orderBy,
-  Timestamp 
+  Timestamp,
+  setDoc
 } from 'firebase/firestore';
 import { db } from './config';
 import { Event, User, ProgrammingSession } from '../types';
@@ -164,10 +165,8 @@ export const userService = {
       for (const user of localUsers) {
         const userRef = doc(db, USERS_COLLECTION, user.id);
         const userData = { ...user };
-        await updateDoc(userRef, userData).catch(async () => {
-          // Se o documento não existe, cria um novo
-          await addDoc(collection(db, USERS_COLLECTION), userData);
-        });
+        // setDoc cria ou atualiza o documento, merge mantém dados antigos se necessário
+        await setDoc(userRef, userData, { merge: true });
       }
     } catch (error) {
       console.error('Erro ao sincronizar usuários:', error);
