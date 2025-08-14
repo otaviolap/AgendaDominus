@@ -1,0 +1,176 @@
+import { 
+  collection, 
+  doc, 
+  getDocs, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  query, 
+  where, 
+  orderBy,
+  Timestamp 
+} from 'firebase/firestore';
+import { db } from './config';
+import { Event, User, ProgrammingSession } from '../types';
+
+// Coleções do Firestore
+const EVENTS_COLLECTION = 'events';
+const USERS_COLLECTION = 'users';
+const SESSIONS_COLLECTION = 'programming_sessions';
+
+// Serviços para Eventos
+export const eventService = {
+  // Buscar todos os eventos
+  async getEvents(): Promise<Event[]> {
+    try {
+      const eventsRef = collection(db, EVENTS_COLLECTION);
+      const snapshot = await getDocs(eventsRef);
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Event[];
+    } catch (error) {
+      console.error('Erro ao buscar eventos:', error);
+      return [];
+    }
+  },
+
+  // Adicionar novo evento
+  async addEvent(event: Omit<Event, 'id'>): Promise<string> {
+    try {
+      const eventsRef = collection(db, EVENTS_COLLECTION);
+      const docRef = await addDoc(eventsRef, {
+        ...event,
+        createdAt: Timestamp.now()
+      });
+      return docRef.id;
+    } catch (error) {
+      console.error('Erro ao adicionar evento:', error);
+      throw error;
+    }
+  },
+
+  // Atualizar evento
+  async updateEvent(id: string, event: Partial<Event>): Promise<void> {
+    try {
+      const eventRef = doc(db, EVENTS_COLLECTION, id);
+      await updateDoc(eventRef, {
+        ...event,
+        updatedAt: Timestamp.now()
+      });
+    } catch (error) {
+      console.error('Erro ao atualizar evento:', error);
+      throw error;
+    }
+  },
+
+  // Deletar evento
+  async deleteEvent(id: string): Promise<void> {
+    try {
+      const eventRef = doc(db, EVENTS_COLLECTION, id);
+      await deleteDoc(eventRef);
+    } catch (error) {
+      console.error('Erro ao deletar evento:', error);
+      throw error;
+    }
+  },
+
+  // Buscar eventos por usuário
+  async getEventsByUser(userId: string): Promise<Event[]> {
+    try {
+      const eventsRef = collection(db, EVENTS_COLLECTION);
+      const q = query(eventsRef, where('userId', '==', userId));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Event[];
+    } catch (error) {
+      console.error('Erro ao buscar eventos do usuário:', error);
+      return [];
+    }
+  }
+};
+
+// Serviços para Sessões de Programação
+export const sessionService = {
+  // Buscar sessões
+  async getSessions(): Promise<ProgrammingSession[]> {
+    try {
+      const sessionsRef = collection(db, SESSIONS_COLLECTION);
+      const q = query(sessionsRef, orderBy('startTime', 'desc'));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as ProgrammingSession[];
+    } catch (error) {
+      console.error('Erro ao buscar sessões:', error);
+      return [];
+    }
+  },
+
+  // Iniciar sessão
+  async startSession(session: Omit<ProgrammingSession, 'id'>): Promise<string> {
+    try {
+      const sessionsRef = collection(db, SESSIONS_COLLECTION);
+      const docRef = await addDoc(sessionsRef, {
+        ...session,
+        startTime: new Date().toISOString(),
+        isActive: true
+      });
+      return docRef.id;
+    } catch (error) {
+      console.error('Erro ao iniciar sessão:', error);
+      throw error;
+    }
+  },
+
+  // Finalizar sessão
+  async endSession(sessionId: string): Promise<void> {
+    try {
+      const sessionRef = doc(db, SESSIONS_COLLECTION, sessionId);
+      await updateDoc(sessionRef, {
+        endTime: new Date().toISOString(),
+        isActive: false
+      });
+    } catch (error) {
+      console.error('Erro ao finalizar sessão:', error);
+      throw error;
+    }
+  }
+};
+
+// Serviços para Usuários
+export const userService = {
+  // Buscar todos os usuários
+  async getUsers(): Promise<User[]> {
+    try {
+      const usersRef = collection(db, USERS_COLLECTION);
+      const snapshot = await getDocs(usersRef);
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as User[];
+    } catch (error) {
+      console.error('Erro ao buscar usuários:', error);
+      return [];
+    }
+  },
+
+  // Sincronizar usuários locais com Firebase
+  async syncUsers(localUsers: User[]): Promise<void> {
+    try {
+      for (const user of localUsers) {
+        const userRef = doc(db, USERS_COLLECTION, user.id);
+        const userData = { ...user };
+        await updateDoc(userRef, userData).catch(async () => {
+          // Se o documento não existe, cria um novo
+          await addDoc(collection(db, USERS_COLLECTION), userData);
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao sincronizar usuários:', error);
+    }
+  }
+};
