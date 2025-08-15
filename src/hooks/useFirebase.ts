@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Event, ProgrammingSession } from '../types';
 import { eventService, sessionService, userService } from '../firebase/services';
 import { testFirebaseConnection } from '../firebase/testConnection';
@@ -9,11 +9,18 @@ export const useFirebase = () => {
   const [sessions, setSessions] = useState<ProgrammingSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [firebaseConnected, setFirebaseConnected] = useState(false);
+  const sessionsUnsubscribeRef = useRef<(() => void) | null>(null);
 
-  // Carregar dados iniciais
+  // Carregar dados iniciais e configurar listeners em tempo real
   useEffect(() => {
     loadInitialData();
+    
+    // Cleanup ao desmontar
+    return () => {
+      if (sessionsUnsubscribeRef.current) {
+        sessionsUnsubscribeRef.current();
+      }
+    };
   }, []);
 
   const loadInitialData = async () => {
@@ -23,7 +30,6 @@ export const useFirebase = () => {
       
       // Testar conexão com Firebase
       const isConnected = await testFirebaseConnection();
-      setFirebaseConnected(isConnected);
       
       if (isConnected) {
         console.log('🔥 Firebase conectado - sincronizando dados...');
@@ -44,6 +50,14 @@ export const useFirebase = () => {
         setEvents(eventsData);
         setSessions(sessionsData);
         setError(null);
+        
+        // Configurar listener em tempo real para sessões
+        const unsubscribeSessions = sessionService.subscribeToSessions((updatedSessions) => {
+          console.log('🔄 Sessões atualizadas em tempo real:', updatedSessions.length);
+          setSessions(updatedSessions);
+        });
+        
+        sessionsUnsubscribeRef.current = unsubscribeSessions;
       } else {
         throw new Error('Falha na conexão com Firebase');
       }
@@ -155,13 +169,7 @@ export const useFirebase = () => {
       
       const newSession = { ...sessionData, id };
       
-      // Atualizar lista de sessões
-      setSessions(prev => {
-        const updated = [newSession, ...prev];
-        console.log('💻 Total de sessões agora:', updated.length);
-        return updated;
-      });
-      
+      // Não precisa atualizar manualmente - o listener em tempo real fará isso
       return newSession;
     } catch (err: any) {
       console.error('❌ Erro ao iniciar sessão no Firebase:', err);
@@ -177,13 +185,13 @@ export const useFirebase = () => {
   // Finalizar sessão de programação
   const endProgrammingSession = async (sessionId: string) => {
     try {
+      console.log('⏹️ Finalizando sessão de programação:', sessionId);
       await sessionService.endSession(sessionId);
+      console.log('✅ Sessão finalizada com sucesso');
       
-      // Recarregar sessões
-      const updatedSessions = await sessionService.getSessions();
-      setSessions(updatedSessions);
+      // Não precisa recarregar manualmente - o listener em tempo real fará isso
     } catch (err) {
-      console.error('Erro ao finalizar sessão:', err);
+      console.error('❌ Erro ao finalizar sessão:', err);
       throw err;
     }
   };

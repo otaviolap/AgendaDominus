@@ -4,6 +4,15 @@ export interface User {
   email: string;
   avatar: string;
   color: string;
+  isOnline?: boolean;
+  lastSeen?: string;
+}
+
+export interface UserPresence {
+  userId: string;
+  isOnline: boolean;
+  lastSeen: string;
+  sessionId: string;
 }
 
 export interface Event {

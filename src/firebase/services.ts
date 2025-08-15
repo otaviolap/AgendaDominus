@@ -9,15 +9,19 @@ import {
   where, 
   orderBy,
   Timestamp,
-  setDoc
+  setDoc,
+  onSnapshot,
+  serverTimestamp,
+  DocumentData
 } from 'firebase/firestore';
 import { db } from './config';
-import { Event, User, ProgrammingSession } from '../types';
+import { Event, User, ProgrammingSession, UserPresence } from '../types';
 
 // Coleções do Firestore
 const EVENTS_COLLECTION = 'events';
 const USERS_COLLECTION = 'users';
 const SESSIONS_COLLECTION = 'programming_sessions';
+const PRESENCE_COLLECTION = 'user_presence';
 
 // Serviços para Eventos
 export const eventService = {
@@ -139,6 +143,30 @@ export const sessionService = {
       console.error('Erro ao finalizar sessão:', error);
       throw error;
     }
+  },
+
+  // Observar mudanças de sessões em tempo real
+  subscribeToSessions(callback: (sessions: ProgrammingSession[]) => void): () => void {
+    try {
+      const sessionsRef = collection(db, SESSIONS_COLLECTION);
+      const q = query(sessionsRef, orderBy('startTime', 'desc'));
+      
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const sessions: ProgrammingSession[] = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as ProgrammingSession[];
+        
+        callback(sessions);
+      }, (error) => {
+        console.error('Erro ao observar sessões:', error);
+      });
+
+      return unsubscribe;
+    } catch (error) {
+      console.error('Erro ao configurar observador de sessões:', error);
+      return () => {};
+    }
   }
 };
 
@@ -170,6 +198,100 @@ export const userService = {
       }
     } catch (error) {
       console.error('Erro ao sincronizar usuários:', error);
+    }
+  }
+};
+
+// Serviços para Sistema de Presença
+export const presenceService = {
+  // Marcar usuário como online
+  async setUserOnline(userId: string, sessionId: string): Promise<void> {
+    try {
+      const presenceRef = doc(db, PRESENCE_COLLECTION, userId);
+      await setDoc(presenceRef, {
+        userId,
+        isOnline: true,
+        lastSeen: serverTimestamp(),
+        sessionId,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Erro ao marcar usuário como online:', error);
+      throw error;
+    }
+  },
+
+  // Marcar usuário como offline
+  async setUserOffline(userId: string): Promise<void> {
+    try {
+      const presenceRef = doc(db, PRESENCE_COLLECTION, userId);
+      await updateDoc(presenceRef, {
+        isOnline: false,
+        lastSeen: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Erro ao marcar usuário como offline:', error);
+      throw error;
+    }
+  },
+
+  // Observar mudanças de presença em tempo real
+  subscribeToPresence(callback: (presenceData: UserPresence[]) => void): () => void {
+    try {
+      const presenceRef = collection(db, PRESENCE_COLLECTION);
+      
+      const unsubscribe = onSnapshot(presenceRef, (snapshot) => {
+        const presenceData: UserPresence[] = snapshot.docs.map(doc => {
+          const data = doc.data() as DocumentData;
+          return {
+            userId: data.userId,
+            isOnline: data.isOnline,
+            lastSeen: data.lastSeen?.toDate?.()?.toISOString() || new Date().toISOString(),
+            sessionId: data.sessionId || ''
+          };
+        }).filter(presence => presence.userId !== 'test-user'); // Filtrar usuário de teste
+        
+        callback(presenceData);
+      }, (error) => {
+        console.error('Erro ao observar presença:', error);
+      });
+
+      return unsubscribe;
+    } catch (error) {
+      console.error('Erro ao configurar observador de presença:', error);
+      return () => {};
+    }
+  },
+
+  // Buscar status de presença de todos os usuários
+  async getAllPresence(): Promise<UserPresence[]> {
+    try {
+      const presenceRef = collection(db, PRESENCE_COLLECTION);
+      const snapshot = await getDocs(presenceRef);
+      
+      return snapshot.docs.map(doc => {
+        const data = doc.data() as DocumentData;
+        return {
+          userId: data.userId,
+          isOnline: data.isOnline,
+          lastSeen: data.lastSeen?.toDate?.()?.toISOString() || new Date().toISOString(),
+          sessionId: data.sessionId || ''
+        };
+      }).filter(presence => presence.userId !== 'test-user'); // Filtrar usuário de teste
+    } catch (error) {
+      console.error('Erro ao buscar dados de presença:', error);
+      return [];
+    }
+  },
+
+  // Limpar dados de teste
+  async cleanupTestData(): Promise<void> {
+    try {
+      const testUserRef = doc(db, PRESENCE_COLLECTION, 'test-user');
+      await deleteDoc(testUserRef);
+    } catch (error) {
+      // Ignorar erro se documento não existir
     }
   }
 };

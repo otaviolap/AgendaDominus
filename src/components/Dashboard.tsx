@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Calendar as CalendarIcon, Clock, Code, Users, Plus, LogOut, Play, Square, MapPin, Link } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, Code, Plus, LogOut, Play, Square, MapPin, Link } from 'lucide-react';
 import { User, Event, ProgrammingSession } from '../types';
 import { users } from '../data/users';
 import EventModal from './EventModal';
 import EventDetailModal from './EventDetailModal';
 import ProgrammingModal from './ProgrammingModal';
 import Calendar from './Calendar';
+import { UserStatusIndicator } from './UserStatusIndicator';
 import { useFirebase } from '../hooks/useFirebase';
+import { usePresence } from '../hooks/usePresence';
 
 interface DashboardProps {
   currentUser: User;
@@ -31,6 +33,9 @@ const Dashboard = ({ currentUser, onLogout }: DashboardProps) => {
     startProgrammingSession, 
     endProgrammingSession 
   } = useFirebase();
+
+  // Hook de presença para dados em tempo real
+  const { presenceData, isUserOnline } = usePresence();
 
   useEffect(() => {
     // Verificar se há sessão ativa do usuário atual
@@ -83,7 +88,13 @@ const Dashboard = ({ currentUser, onLogout }: DashboardProps) => {
   };
 
   const filteredEvents = events.filter(event => event.date === selectedDate);
-  const currentProgrammer = programmingSession ? users.find(u => u.id === programmingSession.userId) : null;
+  
+  // Detectar quem está programando em tempo real
+  const activeProgrammingSession = sessions.find(session => session.isActive);
+  const currentProgrammer = activeProgrammingSession ? users.find(u => u.id === activeProgrammingSession.userId) : null;
+  
+  // Verificar se o programador atual está online
+  const programmerIsOnline = currentProgrammer ? isUserOnline(currentProgrammer.id) : false;
 
   // Mostrar loading
   if (loading) {
@@ -150,8 +161,8 @@ const Dashboard = ({ currentUser, onLogout }: DashboardProps) => {
           </div>
           
           <div className="flex items-center space-x-4">
-            {/* Status de Programação */}
-            {currentProgrammer && (
+            {/* Status de Programação - só mostra se alguém está programando E online */}
+            {currentProgrammer && programmerIsOnline && (
               <div className="flex items-center space-x-2 bg-green-100 text-green-800 px-3 py-2 rounded-full">
                 <Code className="h-4 w-4" />
                 <span className="text-sm font-medium">
@@ -191,17 +202,17 @@ const Dashboard = ({ currentUser, onLogout }: DashboardProps) => {
                 Status de Desenvolvimento
               </h3>
               
-              {programmingSession && programmingSession.userId === currentUser.id ? (
+              {activeProgrammingSession && activeProgrammingSession.userId === currentUser.id ? (
                 <div className="space-y-2">
                   <div className="flex items-center space-x-2 text-green-600">
                     <Play className="h-3 w-3" />
                     <span className="font-medium text-sm">Você está programando</span>
                   </div>
                   <p className="text-xs text-gray-600">
-                    Iniciado às {formatTime(programmingSession.startTime)}
+                    Iniciado às {formatTime(activeProgrammingSession.startTime)}
                   </p>
                   <p className="text-xs text-gray-600">
-                    Duração: {getSessionDuration(programmingSession.startTime)}
+                    Duração: {getSessionDuration(activeProgrammingSession.startTime)}
                   </p>
                   <button
                     onClick={handleStopProgramming}
@@ -211,14 +222,18 @@ const Dashboard = ({ currentUser, onLogout }: DashboardProps) => {
                     Parar Desenvolvimento
                   </button>
                 </div>
-              ) : programmingSession ? (
+              ) : currentProgrammer && programmerIsOnline ? (
                 <div className="text-center text-gray-600">
                   <p className="text-sm mb-2">
-                    {currentProgrammer?.name} está programando
+                    {currentProgrammer.name} está programando
                   </p>
                   <p className="text-xs text-gray-500">
-                    Iniciado às {formatTime(programmingSession.startTime)}
+                    Iniciado às {formatTime(activeProgrammingSession!.startTime)}
                   </p>
+                  <div className="flex items-center justify-center space-x-1 mt-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span className="text-xs text-green-600">Online agora</span>
+                  </div>
                   <button
                     onClick={() => setShowProgrammingModal(true)}
                     className="mt-2 text-sm text-purple-600 hover:text-purple-800 transition-colors"
@@ -238,35 +253,10 @@ const Dashboard = ({ currentUser, onLogout }: DashboardProps) => {
             </div>
 
             {/* Usuários Online */}
-            <div className="bg-white rounded-lg p-3 shadow-sm border border-gray-100">
-              <h3 className="font-medium text-gray-900 mb-3 flex items-center text-sm">
-                <Users className="h-4 w-4 mr-2 text-purple-600" />
-                Equipe
-              </h3>
-              <div className="space-y-2">
-                {users.map((user) => {
-                  const isCurrentUser = user.id === currentUser.id;
-                  const isProgramming = programmingSession?.userId === user.id;
-                  
-                  return (
-                    <div key={user.id} className="flex items-center space-x-2">
-                      <div className={`w-6 h-6 rounded-full ${user.color} flex items-center justify-center text-white font-bold text-xs`}>
-                        {user.avatar}
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-medium text-xs text-gray-900">{user.name}</p>
-                        <p className="text-xs text-gray-500">
-                          {isProgramming ? 'Programando' : isCurrentUser ? 'Online' : 'Offline'}
-                        </p>
-                      </div>
-                      <div className={`w-2 h-2 rounded-full ${
-                        isProgramming ? 'bg-green-500' : isCurrentUser ? 'bg-green-500' : 'bg-gray-300'
-                      }`}></div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <UserStatusIndicator 
+              users={users} 
+              currentUserId={currentUser.id}
+            />
 
             {/* Histórico de Sessões */}
             {sessions.length > 0 && (
@@ -505,10 +495,10 @@ const Dashboard = ({ currentUser, onLogout }: DashboardProps) => {
         />
       )}
 
-      {showProgrammingModal && currentProgrammer && (
+      {showProgrammingModal && currentProgrammer && activeProgrammingSession && (
         <ProgrammingModal
           programmer={currentProgrammer}
-          session={programmingSession!}
+          session={activeProgrammingSession}
           onClose={() => setShowProgrammingModal(false)}
         />
       )}
